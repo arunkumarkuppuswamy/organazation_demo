@@ -1,0 +1,53 @@
+<?php
+
+/**
+ * Custom module for handling the mail feature.
+ */
+
+use Drupal\user\Entity\User;
+
+/**
+* Implements hook_mail().
+*/
+function node_notify_mail($key, &$message, $params) {
+  $options = [
+    'langcode' => $message['langcode'],
+  ];
+ 
+  switch ($key) {
+    case 'sales_update':
+      $message['from'] = \Drupal::config('system.site')->get('mail');
+      $message['subject'] = t('New Quote created: @title', ['@title' => $params['node_title']], $options);
+      $message['body'][] = $params['message'];
+      $message['headers']['Content-Type'] = 'text/html; charset=UTF-8; format=flowed; delsp=yes';
+      break;
+  }
+ }
+ 
+ /**
+* Implements hook_entity_insert().
+*/
+function node_notify_entity_insert(Drupal\Core\Entity\EntityInterface $entity) {
+
+  if ($entity->getEntityTypeId() !== 'node' || ($entity->getEntityTypeId() === 'node' && $entity->bundle() !== 'sales')) {
+    return;
+  }
+  $mailManager = \Drupal::service('plugin.manager.mail');
+  $module = 'node_notify';
+  $key = 'sales_update';
+  $params['message'] = $entity->get('body')->value;
+  $params['node_title'] = $entity->label();
+  $langcode = \Drupal::currentUser()->getPreferredLangcode();
+  $send = true;
+
+  $ids = \Drupal::entityQuery('user')
+  ->condition('status', 1)
+  ->condition('roles', 'sales')
+  ->execute();
+  $users = User::loadMultiple($ids);
+  foreach($users as $user){
+    $mail =  $user->get('mail')->getString();
+    $result = $mailManager->mail($module, $key, $mail, $langcode, $params, NULL, $send);
+  }
+
+}
